@@ -39,8 +39,10 @@ class Models:
     cu_MMCSC_n3_d8_cx32_cy32 = 'cu_mmcsc_n3_d8_cx32_cy32'
     cu_MMCSC_n1_d8 = 'cu_mmcsc_n1_d8'
     cu_MMCSC_n3_d8 = 'cu_mmcsc_n3_d8'
-    CNN_TransNet = 'cnn_transnet'
-    cu_MMCSC_n3_d8_share4 = 'cu_mmcsc_n3_d8_share4'
+    cu_MMCSC_n1_d16 = 'cu_mmcsc_n1_d16'
+    cu_MMCSC_n2_d16 = 'cu_mmcsc_n2_d16'
+    cu_MMCSC_n3_d8_ablation4 = 'cu_mmcsc_n3_d8_ablation4'
+    cu_MMCSC_n2_d16_102_204 = 'cu_mmcsc_n2_d16_102_204'
     MMCSC_n1_d8_cx32_cy32 = 'mmcsc_n1_d8_cx32_cy32'
     MMCSC_n1_d16_cx32_cy32 = 'mmcsc_n1_d16_cx32_cy32'
     MMCSC_n1_d32_cx32_cy32 = 'mmcsc_n1_d32_cx32_cy32'
@@ -48,9 +50,9 @@ class Models:
     MMCSC_n2_d16_cx32_cy32 = 'mmcsc_n2_d16_cx32_cy32'
     MMCSC_n4_d16_cx32_cy32 = 'mmcsc_n4_d16_cx32_cy32'
     MMCSC_n5_d32_cx32_cy32 = 'mmcsc_n5_d32_cx32_cy32'
-    ALL = [AlexNet, VGGNet16, ResNet50, ResNet101, DenseNet121, MLISTA, MMCSC_n1_d8_cx32_cy32, MMCSC_n1_d16_cx32_cy32,CNN_TransNet,
-           MMCSC_n1_d32_cx32_cy32, MMCSC_n3_d8_cx32_cy32, MMCSC_n2_d16_cx32_cy32, MMCSC_n4_d16_cx32_cy32,
-           MMCSC_n5_d32_cx32_cy32,ResNet101_rgbd,MLISTA_rgbd,MLFISTA_rgbd,MLLISTA_rgbd,cu_MMCSC_n1_d8_cx32_cy32,cu_MMCSC_n3_d8_cx32_cy32,cu_MMCSC_n1_d8,cu_MMCSC_n3_d8_share4,cu_MMCSC_n3_d8]
+    ALL = [AlexNet, VGGNet16, ResNet50, ResNet101, DenseNet121, MLISTA, MMCSC_n1_d8_cx32_cy32, MMCSC_n1_d16_cx32_cy32,
+           MMCSC_n1_d32_cx32_cy32, MMCSC_n3_d8_cx32_cy32, MMCSC_n2_d16_cx32_cy32, MMCSC_n4_d16_cx32_cy32,cu_MMCSC_n3_d8_ablation4,
+           MMCSC_n5_d32_cx32_cy32,ResNet101_rgbd,MLISTA_rgbd,MLFISTA_rgbd,MLLISTA_rgbd,cu_MMCSC_n1_d8_cx32_cy32,cu_MMCSC_n3_d8_cx32_cy32,cu_MMCSC_n1_d8,cu_MMCSC_n3_d8,cu_MMCSC_n1_d16,cu_MMCSC_n2_d16]
 
 
 class DataTypes:

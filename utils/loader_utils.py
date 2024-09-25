@@ -24,8 +24,6 @@ def imread_uint(path: str, n_channels: int = 3) -> np.ndarray:
         img = np.expand_dims(img, axis=2)  # HxWx1
     elif n_channels == 3:
         img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-        # print(path)
-        # print(img.shape)
         if img.ndim == 2:
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
         else:

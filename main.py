@@ -6,7 +6,7 @@ from datetime import datetime
 
 from utils.basic_utils import RunSteps, PrForm, DataTypes, DepthTypes, Models, Pools, OverallModes
 from overall_struct import run_overall_steps
-os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 def str2bool(v):
     if isinstance(v,bool):
         return v
@@ -87,7 +87,7 @@ def init_logger(logfile_name, params):
 
 def get_initial_parser():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--dataset-path", dest="dataset_path", default="/raid/xjy/dataset/wrgbd/colored_rgbd/",
+    parser.add_argument("--dataset-path", dest="dataset_path", default="/data/WRGBD/",
                         help="Path to the data root")
     parser.add_argument("--features-root", dest="features_root", default="models-features",
                         help="Root folder for CNN features to load/save")
@@ -95,7 +95,7 @@ def get_initial_parser():
                         type=str.lower, help="Data type to process, crop for rgb, depthcrop for depth data")
     parser.add_argument("--depth-type", dest="depth_type", default=DepthTypes.RGB, choices=DepthTypes.ALL,
                         type=int, help="Depth type to process, 3 for colored depth data, 1 for original depth data")
-    parser.add_argument("--net-model", dest="net_model", default=Models.cu_MMCSC_n3_d8_share4, choices=Models.ALL,
+    parser.add_argument("--net-model", dest="net_model", default=Models.cu_MMCSC_n3_d8, choices=Models.ALL,
                         type=str.lower, help="Backbone CNN model to be employed as the feature extractor")
     parser.add_argument("--debug-mode", dest="debug_mode", default=0, type=int, choices=[0, 1])
     parser.add_argument("--debug-size", dest="debug_size", default=3, type=int, help="Debug size for each instance. ")
@@ -116,16 +116,17 @@ def init_save_dirs(params):
 
 def get_overall_run_params():
     parser = get_initial_parser()
-    parser.add_argument("--gpu", dest="gpu", default=False, type=str2bool, help="Use more than 1 gpu or not")
-    parser.add_argument("--batch-size", dest="batch_size", default=128, type=int)
+    parser.add_argument("--gpu", dest="gpu", default=False, type=str2bool)
+    parser.add_argument("--batch-size", dest="batch_size", default=64, type=int)
     parser.add_argument("--split-no", dest="split_no", default=1, type=int, choices=range(1, 11), help="Split number")
     parser.add_argument("--run-mode", dest="run_mode", default=OverallModes.FIX_PRETRAIN_MODEL, type=int,
                         choices=OverallModes.ALL)
     parser.add_argument("--num-rnn", dest="num_rnn", default=128, type=int, help="Number of RNN")
-    parser.add_argument("--lr", dest="lr", default=1*1e-4, type=float, help="learning rate")
+    parser.add_argument("--lr", dest="lr", default=1*1e-6, type=float, help="learning rate")
     parser.add_argument("--epoch", dest="EPOCH", default=500, type=int, help="epochs")
     parser.add_argument("--phase", dest="phase", default='train', type=str, help="train or test")
     parser.add_argument("--qloss", dest="qloss", default=False, type=str2bool, help="Use q loss or not")
+    parser.add_argument("--dict", dest="dict", default=False, type=str2bool, help="visualize dictionary kernel or not")
     parser.add_argument("--cu", dest="cu", default=False, type=str2bool, help="Use cu or not")
     parser.add_argument("--down_time", dest="down_time", default=1, type=int, help="down sample times")
     parser.add_argument("--interpret", dest="interpret", default=False, type=str2bool, help="visualize interpret features")

@@ -1,3 +1,4 @@
+
 from typing import Any, List, Tuple
 import torch
 from torch import Tensor
@@ -8,9 +9,9 @@ import torch.nn.functional as F
 import numpy as np
 from math import ceil
 import math
-from ptflops import get_model_complexity_info
+import time
 # from .utils import *
-__all__ = ['MMCSC', 'cu_mmcsc_n1_d8', 'cu_mmcsc_n1_d16', 'cu_mmcsc_n1_d32','cu_mmcsc_n3_d8','cu_mmcsc_n2_d16','cu_mmcsc_n4_d16','cu_mmcsc_n5_d32']
+__all__ = ['MMCSC', 'cu_mmcsc_n1_d8', 'cu_mmcsc_n1_d16', 'cu_mmcsc_n1_d32','cu_mmcsc_n3_d8','cu_mmcsc_n2_d16','cu_mmcsc_n4_d16','cu_mmcsc_n5_d32','cu_mmcsc_n2_d16_102_204']
 # iteration version with beta
 class Coarse_CSC_layer(nn.Module):
     def __init__(self, num_iter, in_channels, num_filters, kernel_size,stride):
@@ -115,9 +116,10 @@ class Map_final(nn.Module):
         return C
 
 class CU_Encoder(nn.Module):
-    def __init__(self,num_layer,num_iter,in_channel,num_filters,kernel_size,stride):
+    def __init__(self,num_layer,num_iter,in_channel,num_filters,kernel_size,stride,interpret):
         super(CU_Encoder, self).__init__()
         self.num_layer = num_layer
+        self.interpret = interpret
         self.coarse_encoder = Coarse_CU_Encoder(num_iter,in_channel,num_filters,kernel_size,stride)
         self.fine_encoder: nn.ModuleList = nn.ModuleList()
         # self.final_map = Map_final(num_filters[-1], num_filters[-1]*2, 3)
@@ -125,14 +127,27 @@ class CU_Encoder(nn.Module):
             num = 3+i
             self.fine_encoder.append(Fine_CU_Encoder(num,num_iter,in_channel,num_filters,kernel_size,stride))
     def forward(self,X,Y):
+        interpret_C = []
+        interpret_U = []
+        interpret_V = []
         C1, U1, V1 = self.coarse_encoder(X, Y)
         C, U, V = C1, U1, V1
+        interpret_C.append(C)
+        interpret_U.append(U)
+        interpret_V.append(V)
         for i in range(self.num_layer):
             C, U, V = self.fine_encoder[i](C, U, V)
-        return C
+            interpret_C.append(C)
+            if i < self.num_layer - 1:
+                interpret_U.append(U)
+                interpret_V.append(V)
+        if not self.interpret:
+            return C
+        else:
+            return C, interpret_C, interpret_U, interpret_V
 
 class MMCSC(nn.Module):
-    def __init__(self,num_layer, num_class,channel_per_class,down_scale_encoder,down_scale_classifier,x_in_channels,y_in_channels,c_out_channels,x_out_channels,y_out_channels, need_gamma,k_c,k_f,J,M):
+    def __init__(self,num_layer, num_class,channel_per_class,down_scale_encoder,down_scale_classifier,x_in_channels,y_in_channels,c_out_channels,x_out_channels,y_out_channels, need_gamma,interpret,k_c,k_f,J,M):#
         super(MMCSC, self).__init__()
         self.need_gamma = need_gamma
         self.num_layer = num_layer
@@ -145,101 +160,103 @@ class MMCSC(nn.Module):
         self.x_out_channels = x_out_channels # filter channel numbers during ista for RGB inputs
         self.y_out_channels = y_out_channels # filter channel numbers during ista for Depth inputs
         self.c_out_channels = c_out_channels # filter channel numbers during ista for Common inputs
-
         self.k_c = k_c
         self.k_f = k_f
         self.J = J
         self.M = M
-        self.num_iter = [self.J, self.J, self.J]
-        self.in_channel = [self.x_in_channels, self.y_in_channels, self.x_in_channels + self.y_in_channels, self.c_out_channels]
-        self.num_filters = [self.x_out_channels, self.y_out_channels, self.c_out_channels]
-        self.kernel_size = [self.k_c, self.k_c, self.k_c]
+        self.interpret = interpret
+
+        self.num_iter=[self.J,self.J,self.J]
+        self.in_channel = [self.x_in_channels,self.y_in_channels,self.x_in_channels+self.y_in_channels,self.c_out_channels]
+        self.num_filters = [self.x_out_channels,self.y_out_channels,self.c_out_channels]
+        self.kernel_size = [self.k_c,self.k_c,self.k_c]#[self.k_c,self.k_c,self.k_c]
         self.stride = [1,1,1]
         times = int(math.pow(self.down_scale_encoder,1/self.num_layer))
         for i in range(self.num_layer):
+
             self.num_iter.append(self.J)
             self.kernel_size.append(self.k_f)
             self.stride.append(times)
-            if i == self.num_layer-1:
-                self.in_channel.append(self.num_class * (times ** (i + 1)) * self.M// self.down_scale_encoder)#
-                self.num_filters.append(self.num_class * (times ** (i + 1)) * self.M// self.down_scale_encoder)  #
-            else:
-                self.in_channel.append(self.num_class * (times ** (i + 1)) // (self.down_scale_encoder // 4))  #
-                self.num_filters.append(self.num_class * (times ** (i + 1)) // (self.down_scale_encoder // 4))  #
+            self.in_channel.append(self.num_class * (times ** (i + 1))//(self.down_scale_encoder//self.M))#
+            self.num_filters.append(self.num_class * (times ** (i + 1))//(self.down_scale_encoder//self.M))#
         self.padding = (self.kernel_size[-1] - 1) // 2
-        self.encoder = CU_Encoder(num_layer = self.num_layer,num_iter=self.num_iter,in_channel=self.in_channel,num_filters=self.num_filters,kernel_size=self.kernel_size,stride=self.stride)
+        self.encoder = CU_Encoder(num_layer = self.num_layer,num_iter=self.num_iter,in_channel=self.in_channel,num_filters=self.num_filters,kernel_size=self.kernel_size,stride=self.stride,interpret=self.interpret)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(self.num_class*self.M, self.num_class)
+        self.classifier = nn.Linear(self.num_class*self.M, self.num_class)#
 
     def forward(self,X):
         c = X.shape[1]
         X, Y = X[:, :3, :, :], X[:, 3:c, :, :]
-        Gamma2 = self.encoder(X,Y)
-        # print(Gamma2.shape)
+        if not self.interpret:
+            Gamma2 = self.encoder(X, Y)
+        else:
+            Gamma2, interpret_C, interpret_U, interpret_V = self.encoder(X, Y)
         Gamma =self.avg_pool(Gamma2)
-        # print(Gamma.shape)
         Gamma = Gamma.view(Gamma.shape[0], -1)
-        # print(Gamma.shape)
         out_class = self.classifier(Gamma)
         out_class = F.log_softmax(out_class, dim=1)
-        if self.need_gamma:
-            return out_class, [Gamma2]
+        if not self.interpret:
+            if self.need_gamma:
+                return out_class, [Gamma2]
+            else:
+                return out_class
         else:
-            return out_class
-#为了不损失数据，最好取channel_per_class = down_scale_encoder 即图片大小缩小多少倍，对应channel数增加多少倍
-#num_layer和down_scale_encoder共同决定fineCSC层的stride，即如果3层，缩小8倍，则每一层缩小2倍，因此down_scale_encoder最好是num_layer的整数次方
-#根据输入224，down_scale_encoder最大为32
+            return out_class, interpret_C, interpret_U, interpret_V
 
 # Number of parameters:           2.22 M
 #n1,d8,cx32,cy32
 #num_layer=1,channel_per_class=down_scale_encoder=8,x_out_channels=32,y_out_channels=32
-def cu_mmcsc_n1_d8(num_layer=1,num_class=51,channel_per_class=8,down_scale_encoder=8,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4):
-    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+def cu_mmcsc_n1_d8(num_layer=1,num_class=51,channel_per_class=8,down_scale_encoder=8,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4,interpret=False):
+    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M,interpret=interpret)
     return model
 
 # Number of parameters:           4.36 M
 #n1,d16,cx32,cy32
-def cu_mmcsc_n1_d16(num_layer=1,num_class=51,channel_per_class=16,down_scale_encoder=16,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4):
-    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+def cu_mmcsc_n1_d16(num_layer=1,num_class=51,channel_per_class=16,down_scale_encoder=16,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4,interpret=False):
+    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M,interpret=interpret)
     return model
 
 # Computational complexity:       144.54 GMac
 # Number of parameters:           8.64 M
 #n1,d32,cx32,cy32
-def cu_mmcsc_n1_d32(num_layer=1,num_class=51,channel_per_class=32,down_scale_encoder=32,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4):
-    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+def cu_mmcsc_n1_d32(num_layer=1,num_class=51,channel_per_class=32,down_scale_encoder=32,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4,interpret=False):
+    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M,interpret=interpret)
     return model
 
 # Computational complexity:       43.79 GMac
 # Number of parameters:           9.07 M
 #n3,d8,cx32,cy32
-def cu_mmcsc_n3_d8(num_layer=3,num_class=51,channel_per_class=8,down_scale_encoder=8,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4):
-    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+def cu_mmcsc_n3_d8(num_layer=3,num_class=51,channel_per_class=8,down_scale_encoder=8,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4,interpret=False):
+    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M,interpret=interpret)
     return model
 
 # Computational complexity:       47.35 GMac
 # Number of parameters:           14.67 M
 #n2,d16,cx32,cy32
-def cu_mmcsc_n2_d16(num_layer=2,num_class=51,channel_per_class=16,down_scale_encoder=16,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4):
-    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+def cu_mmcsc_n2_d16(num_layer=2,num_class=51,channel_per_class=16,down_scale_encoder=16,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4,interpret=False):
+    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M,interpret=interpret)
+    return model
+
+def cu_mmcsc_n2_d16_102_204(num_layer=2,num_class=51,channel_per_class=16,down_scale_encoder=16,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4,interpret=False):
+    model = MMCSC2(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M,interpret=interpret)
     return model
 
 # Computational complexity:       55.46 GMac
 # Number of parameters:           36.06 M
 #n4,d16,cx32,cy32
-def cu_mmcsc_n4_d16(num_layer=4,num_class=51,channel_per_class=16,down_scale_encoder=16,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4):
-    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+def cu_mmcsc_n4_d16(num_layer=4,num_class=51,channel_per_class=16,down_scale_encoder=16,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4,interpret=False):
+    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M,interpret=interpret)
     return model
 
 # Computational complexity:       66.5 GMac
 # Number of parameters:           143.98 M
 #n5,d32,cx32,cy32
-def cu_mmcsc_n5_d32(num_layer=5,num_class=51,channel_per_class=32,down_scale_encoder=32,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4):
-    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+def cu_mmcsc_n5_d32(num_layer=5,num_class=51,channel_per_class=32,down_scale_encoder=32,down_scale_classifier=16,x_in_channels=3,y_in_channels=3,c_out_channels=32,x_out_channels=32,y_out_channels=32, need_gamma=False,k_c=7,k_f=4,J=4,M=4,interpret=False):
+    model = MMCSC(num_layer=num_layer,num_class=num_class,channel_per_class=channel_per_class,down_scale_encoder=down_scale_encoder,down_scale_classifier=down_scale_classifier,x_in_channels=x_in_channels,y_in_channels=y_in_channels,c_out_channels=c_out_channels,x_out_channels=x_out_channels,y_out_channels=y_out_channels, need_gamma=need_gamma,k_c=k_c,k_f=k_f,J=J,M=M,interpret=interpret)
     return model
 
 if __name__ == '__main__':
-    net = cu_mmcsc_n3_d8()
+    net = cu_mmcsc_n2_d16_102_204()
     print(net)
     print('# network parameters:', sum(param.numel() for param in net.parameters()) / 1e6, 'M')
     a = torch.rand([10, 6, 224, 224])
@@ -248,7 +265,3 @@ if __name__ == '__main__':
     print(a_out.shape)
     # lis=torch.max(a_out, dim=1)[1]
     # print(torch.eq(torch.max(a_out, dim=1)[1], val_labels.to(device)).sum().item())
-    macs, params = get_model_complexity_info(net, (6, 224, 224), as_strings=True, print_per_layer_stat=True,
-                                             verbose=True)
-    print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
-    print('{:<30}  {:<8}'.format('Number of parameters: ', params))

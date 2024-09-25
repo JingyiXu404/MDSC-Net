@@ -26,10 +26,11 @@ from ptflops import get_model_complexity_info
 "---------------- CLS Net ( Backbones+FCN ) --------------------------------------"
 class clsNet(nn.Module):
 
-    def __init__(self, classes_num=5, basic_model='resnet18',pretrain=True,need_gamma=False,k_c=7,k_f=4,J=4,M=4):
+    def __init__(self, classes_num=5, basic_model='resnet18',pretrain=True,need_gamma=False,interpret=False,k_c=7,k_f=4,J=4,M=4):
         super(clsNet, self).__init__()
         self.basic_model=basic_model
         self.need_gamma = need_gamma
+        self.interpret = interpret
         if self.basic_model == 'resnet18':
             self.resNet1 = basic_net.resnet18(pretrained=pretrain)
             self.resNet = list(self.resNet1.children())[:-2]
@@ -72,34 +73,37 @@ class clsNet(nn.Module):
             self.MLISTA = basic_net.ml_lista_rgbd(T=6, classes_num=classes_num)
         elif self.basic_model == 'lbpnet':
             self.LBP = basic_net.lbp_net(T=6,classes_num = classes_num)
-        elif self.basic_model == 'cnn_transnet':
-            self.CNN_TransNet = basic_net.cnn_transnet(pretrained=pretrain)
         elif 'mmcsc' in self.basic_model:
             if self.basic_model == 'mmcsc_n1_d8_cx32_cy32':
-                self.MMCSC = basic_net.mmcsc_n1_d8_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.mmcsc_n1_d8_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'mmcsc_n1_d16_cx32_cy32':
-                self.MMCSC = basic_net.mmcsc_n1_d16_cx32_cy32(num_class=classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.mmcsc_n1_d16_cx32_cy32(num_class=classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'mmcsc_n1_d32_cx32_cy32':
-                self.MMCSC = basic_net.mmcsc_n1_d32_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.mmcsc_n1_d32_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'mmcsc_n3_d8_cx32_cy32':
-                self.MMCSC = basic_net.mmcsc_n3_d8_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.mmcsc_n3_d8_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'mmcsc_n2_d16_cx32_cy32':
-                self.MMCSC = basic_net.mmcsc_n2_d16_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.mmcsc_n2_d16_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'mmcsc_n4_d16_cx32_cy32':
-                self.MMCSC = basic_net.mmcsc_n4_d16_cx32_cy32(num_class=classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.mmcsc_n4_d16_cx32_cy32(num_class=classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'mmcsc_n5_d32_cx32_cy32':
-                self.MMCSC = basic_net.mmcsc_n5_d32_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.mmcsc_n5_d32_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'cu_mmcsc_n1_d8_cx32_cy32':
-                self.MMCSC = basic_net.cu_mmcsc_n1_d8_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.cu_mmcsc_n1_d8_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'cu_mmcsc_n3_d8_cx32_cy32':
-                self.MMCSC = basic_net.cu_mmcsc_n3_d8_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.cu_mmcsc_n3_d8_cx32_cy32(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'cu_mmcsc_n1_d8':
-                self.MMCSC = basic_net.cu_mmcsc_n1_d8(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
+                self.MMCSC = basic_net.cu_mmcsc_n1_d8(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
+            elif self.basic_model == 'cu_mmcsc_n1_d16':
+                self.MMCSC = basic_net.cu_mmcsc_n1_d16(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
             elif self.basic_model == 'cu_mmcsc_n3_d8':
-                self.MMCSC = basic_net.cu_mmcsc_n3_d8(num_class = classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
-            elif self.basic_model == 'cu_mmcsc_n3_d8_share4':
-                self.MMCSC = basic_net.cu_mmcsc_n3_d8_share4(num_class=classes_num, need_gamma=self.need_gamma,k_c=k_c,k_f=k_f,J=J,M=M)
-
+                self.MMCSC = basic_net.cu_mmcsc_n3_d8(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
+            elif self.basic_model == 'cu_mmcsc_n2_d16':
+                self.MMCSC = basic_net.cu_mmcsc_n2_d16(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
+            elif self.basic_model == 'cu_mmcsc_n2_d16_102_204':
+                self.MMCSC = basic_net.cu_mmcsc_n2_d16_102_204(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
+            elif self.basic_model == 'cu_mmcsc_n3_d8_ablation4':
+                self.MMCSC = basic_net.cu_mmcsc_n3_d8_ablation4(num_class = classes_num, need_gamma=self.need_gamma,interpret=self.interpret,k_c=k_c,k_f=k_f,J=J,M=M)
     def embed(self, x):
         x = self.features(x)
         x = self.spatial_pyramid_pool(x, x.size(0), [int(x.size(2)),int(x.size(3))], [4,2,1])
@@ -173,9 +177,6 @@ class clsNet(nn.Module):
         elif 'mmcsc' in self.basic_model:
             x = self.MMCSC(x)
             return x
-        elif self.basic_model == 'cnn_transnet':
-            out,x = self.CNN_TransNet(x)
-            return out
 
 
 if __name__ == "__main__":

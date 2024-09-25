@@ -6,7 +6,7 @@ import scipy.io as io
 import torch
 from torch.utils.data import Dataset
 import cv2
-from utils import wrgbd51,ocid30,JHUIT50
+from utils import wrgbd51
 from utils.basic_utils import RunSteps
 
 """
@@ -74,241 +74,10 @@ class WashingtonAll(Dataset):
         return indices
 
 
-class JHUIT50Dataset(Dataset):
-    def __init__(self, params, phase, loader=None, transform=None):
-        self.params = params
-        self.phase = phase
-        self.loader = loader
-        self.transform = transform
-        self.data = self._init_dataset()
-    def __getitem__(self, index):
-        if self.params.qloss:
-            if self.params.data_type == 'rgbd':
-                path1, path2, q_label, target = self.data[index]
-                filename = path1[path1.rfind('/') + 1:]
-                datum_RGB, datum_Depth = self.loader([path1, path2], self.params)
-                # cv2.imwrite(filename+'_0.png', datum_RGB)
-                # cv2.imwrite(filename+'_1.png', datum_Depth)
-                if self.transform is not None:
-                    datum_RGB = self.transform(datum_RGB)
-                    datum_Depth = self.transform(datum_Depth)
-                # imsave(datum_RGB,filename+'_2.png')
-                # imsave(datum_Depth,filename+'_3.png')
-                datum = torch.cat((datum_RGB, datum_Depth), dim=0)
-            else:
-                path, q_label, target = self.data[index]
-                filename = path[path.rfind('/') + 1:]
-                datum = self.loader([path], self.params)
+"""
+# WashingtonDataset class is for the use of Washington RGB-D dataset as is provided by the 10-fold train/test splits.
+"""
 
-                if self.transform is not None:
-                    datum = self.transform(datum)
-
-            return datum, q_label, target, filename
-        else:
-            if self.params.data_type == 'rgbd':
-                path1,path2,target = self.data[index]
-                filename = path1[path1.rfind('/') + 1:]
-                datum_RGB, datum_Depth = self.loader([path1, path2], self.params)
-                if self.transform is not None:
-                    datum_RGB = self.transform(datum_RGB)
-                    datum_Depth = self.transform(datum_Depth)
-                datum = torch.cat((datum_RGB, datum_Depth), dim=0)
-            else:
-                path, target = self.data[index]
-                filename = path[path.rfind('/') + 1:]
-                datum = self.loader([path], self.params)
-                # cv2.imwrite('1.png', datum)
-                if self.transform is not None:
-                    datum = self.transform(datum)
-            return datum, target, filename
-
-    def __len__(self):
-        return len(self.data)
-
-    def _init_dataset(self):
-        data = []
-        data_path = self.params.dataset_path
-        for instance in sorted(os.listdir(data_path)):
-            instance_path = os.path.join(data_path, instance)
-            cat_ind = int(JHUIT50.class_name_to_id[instance])
-            data.extend(self.add_item(instance_path, cat_ind))
-
-        return data
-
-    def add_item(self, instance_path, cat_ind):
-        indices = []
-        suffix = '*_rgbcrop.png'
-        num_debug = 0
-        if self.params.qloss:
-            if self.params.cu:
-                h = self.params.img_size // self.params.down_scale_encoder
-                q_label = generate_Q(h=h, w=h, class_id=cat_ind, num_class=self.params.num_class,channel_per_class=self.params.M, cu=self.params.cu,times=self.params.down_time+1)
-            else:
-                h = self.params.img_size // self.params.down_scale_encoder
-                q_label = generate_Q(h=h, w=h, class_id=cat_ind, num_class=self.params.num_class,channel_per_class=self.params.M, cu=self.params.cu,times=self.params.down_time+1)
-            # print(q_label.shape)
-        for file in fnmatch.filter(sorted(os.listdir(instance_path)), suffix):
-            classname = JHUIT50.class_id_to_name[str(cat_ind)]
-            setjudge = file[len(classname) + 1]
-            if self.phase == 'train':
-                if int(setjudge) >= 4:
-                    continue
-            else:
-                if int(setjudge) < 4:
-                    continue
-            path = os.path.join(instance_path, file)
-            if self.params.qloss:
-                # RGBD
-                if self.params.data_type == 'rgbd':
-                    if self.params.depth_type == 3:  # 3 channel Depth
-                        path2 = path.replace('_rgbcrop.png', '_depthsn.png')
-                    else:  # 1 channel Depth
-                        path2 = path.replace('_rgbcrop.png', '_depthcrop.png')
-                    item = (path, path2, q_label, cat_ind)
-                # Depth
-                elif self.params.data_type == 'depthcrop':
-                    if self.params.depth_type == 3:  # 3 channel Depth
-                        path2 = path.replace('_depthcrop.png', '_depthsn.png')
-                    else:  # 1 channel Depth
-                        path2 = path
-                    item = (path2, q_label, cat_ind)
-                # RGB
-                else:
-                    item = (path, q_label, cat_ind)
-            else:
-                if self.params.data_type == 'rgbd':
-                    if self.params.depth_type == 3:  # 3 channel Depth
-                        path2 = path.replace('_rgbcrop.png', '_depthsn.png')
-                    else:  # 1 channel Depth
-                        path2 = path.replace('_rgbcrop.png', '_depthcrop.png')
-                    item = (path, path2, cat_ind)
-                elif self.params.data_type == 'depthcrop':
-                    if self.params.depth_type == 3:  # 3 channel Depth
-                        path2 = path.replace('_depthcrop.png', '_depthsn.png')
-                    else:  # 1 channel Depth
-                        path2 = path
-                    item = (path2, cat_ind)
-                else:
-                    item = (path, cat_ind)
-            indices.append(item)
-            num_debug += 1
-            if num_debug == self.params.debug_size and self.params.debug_mode:
-                break
-        return indices
-
-class OCIDDataset(Dataset):
-    def __init__(self, params, phase, loader=None, transform=None):
-        self.params = params
-        self.phase = phase
-        self.loader = loader
-        self.transform = transform
-        self.data = self._init_dataset()
-    def __getitem__(self, index):
-        if self.params.qloss:
-            if self.params.data_type == 'rgbd':
-                path1, path2, q_label, target = self.data[index]
-                filename = path1[path1.rfind('/') + 1:]
-                datum_RGB, datum_Depth = self.loader([path1, path2], self.params)
-                # cv2.imwrite(filename+'_0.png', datum_RGB)
-                # cv2.imwrite(filename+'_1.png', datum_Depth)
-                if self.transform is not None:
-                    datum_RGB = self.transform(datum_RGB)
-                    datum_Depth = self.transform(datum_Depth)
-                # imsave(datum_RGB,filename+'_2.png')
-                # imsave(datum_Depth,filename+'_3.png')
-                datum = torch.cat((datum_RGB, datum_Depth), dim=0)
-            else:
-                path, q_label, target = self.data[index]
-                filename = path[path.rfind('/') + 1:]
-                datum = self.loader([path], self.params)
-
-                if self.transform is not None:
-                    datum = self.transform(datum)
-
-            return datum, q_label, target, filename
-        else:
-            if self.params.data_type == 'rgbd':
-                path1,path2,target = self.data[index]
-                filename = path1[path1.rfind('/') + 1:]
-                datum_RGB, datum_Depth = self.loader([path1, path2], self.params)
-                if self.transform is not None:
-                    datum_RGB = self.transform(datum_RGB)
-                    datum_Depth = self.transform(datum_Depth)
-                datum = torch.cat((datum_RGB, datum_Depth), dim=0)
-            else:
-                path, target = self.data[index]
-                filename = path[path.rfind('/') + 1:]
-                datum = self.loader([path], self.params)
-                # cv2.imwrite('1.png', datum)
-                if self.transform is not None:
-                    datum = self.transform(datum)
-            return datum, target, filename
-
-    def __len__(self):
-        return len(self.data)
-
-    def _init_dataset(self):
-        data = []
-        # train_rgb_path = self.params.dataset_path + '/ARID20_crops/squared_rgb/'
-        # train_depth_path = self.params.dataset_path + '/ARID20_crops/surfnorm++/'
-        # test_rgb_path = self.params.dataset_path + '/ARID10_crops/squared_rgb/'
-        # test_depth_path = self.params.dataset_path + '/ARID10_crops/surfnorm++/'
-
-        if self.phase == 'train':
-            data_path = os.path.join(self.params.dataset_path, 'ARID20_crops/')
-        else:
-            data_path = os.path.join(self.params.dataset_path, 'ARID10_crops/')
-        for category in sorted(os.listdir(os.path.join(data_path,'squared_rgb/'))):
-            #30 categories for training
-            #28 categories for testing
-            category_path = os.path.join(data_path, 'squared_rgb/', category)
-            cat_ind = int(ocid30.class_name_to_id[category])
-            for instance in sorted(os.listdir(category_path)):
-                instance_path = os.path.join(category_path, instance)
-                data.extend(self.add_item(instance_path, cat_ind))
-
-        return data
-
-    def add_item(self, instance_path, cat_ind):
-        indices = []
-        suffix = '*.png'
-        num_debug = 0
-        if self.params.qloss:
-            if self.params.cu:
-                h = self.params.img_size // self.params.down_scale_encoder
-                q_label = generate_Q(h=h, w=h, class_id=cat_ind, num_class=self.params.num_class,channel_per_class=self.params.channel_per_class, cu=self.params.cu,times=self.params.down_time)
-            else:
-                h = self.params.img_size // self.params.down_scale_encoder
-                q_label = generate_Q(h=h, w=h, class_id=cat_ind, num_class=self.params.num_class, channel_per_class=self.params.channel_per_class, cu = self.params.cu, times = self.params.down_time+1)
-            # print(q_label.shape)
-
-        for file in fnmatch.filter(sorted(os.listdir(instance_path)), suffix):
-            path_rgb = os.path.join(instance_path, file)
-            path_depth = path_rgb.replace('squared_rgb','surfnorm++')
-            if not os.path.exists(path_rgb) or not os.path.exists(path_depth):
-                continue
-            if self.params.qloss:
-                #RGBD
-                if self.params.data_type == 'rgbd':
-                    item = (path_rgb, path_depth, q_label, cat_ind)
-                #Depth
-                elif self.params.data_type == 'depthcrop':
-                    pass
-                # RGB
-                else:
-                    item = (path_rgb,q_label, cat_ind)
-            else:
-                if self.params.data_type == 'rgbd':
-                    item = (path_rgb,path_depth,cat_ind)
-                elif self.params.data_type == 'depthcrop':
-                    pass
-                else:
-                    item = (path_rgb, cat_ind)
-            indices.append(item)
-            num_debug += 1
-            if num_debug == self.params.debug_size and self.params.debug_mode:
-                break
-        return indices
 
 class WashingtonDataset(Dataset):
     def __init__(self, params, phase, loader=None, transform=None):
@@ -323,13 +92,15 @@ class WashingtonDataset(Dataset):
                 path1, path2, q_label, target = self.data[index]
                 filename = path1[path1.rfind('/') + 1:]
                 datum_RGB, datum_Depth = self.loader([path1, path2], self.params)
-                # cv2.imwrite(str(index)+'_0.png', datum_RGB)
-                # cv2.imwrite(str(index)+'_1.png', datum_Depth)
+                # if index>1000:
+                #     cv2.imwrite(str(index)+'_0.png', datum_RGB)
+                #     cv2.imwrite(str(index)+'_1.png', datum_Depth)
                 if self.transform is not None:
                     datum_RGB = self.transform(datum_RGB)
                     datum_Depth = self.transform(datum_Depth)
-                    # imsave(datum_RGB,str(index)+'_2.png')
-                    # imsave(datum_Depth,str(index)+'_3.png')
+                # if index>1000:
+                #     imsave(datum_RGB,str(index)+'_2.png')
+                #     imsave(datum_Depth,str(index)+'_3.png')
                 datum = torch.cat((datum_RGB, datum_Depth), dim=0)
             else:
                 path, q_label, target = self.data[index]
@@ -399,12 +170,13 @@ class WashingtonDataset(Dataset):
         if self.params.qloss:
             if self.params.cu:
                 h = self.params.img_size // self.params.down_scale_encoder
-                q_label = generate_Q(h=h, w=h, class_id=cat_ind, num_class=self.params.num_class,channel_per_class=self.params.M, cu=self.params.cu,times=self.params.down_time+1)
+                q_label = generate_Q(h=h, w=h, class_id=cat_ind, num_class=self.params.num_class,
+                                     channel_per_class=self.params.M, cu=self.params.cu,times=self.params.down_time + 1)
             else:
                 h = self.params.img_size // self.params.down_scale_encoder
-                q_label = generate_Q(h=h, w=h, class_id=cat_ind, num_class=self.params.num_class, channel_per_class=self.params.M, cu = self.params.cu, times = self.params.down_time+1)
+                q_label = generate_Q(h=h, w=h, class_id=cat_ind, num_class=self.params.num_class,
+                                     channel_per_class=self.params.M, cu=self.params.cu,times=self.params.down_time + 1)  # debug#debug
             # print(q_label.shape)
-            #debug
             # q = np.transpose(q_label,(1, 2, 0))
             # for i in range(q.shape[2]):
             #     os.makedirs('q/'+str(cat_ind)+'/',exist_ok=True)
@@ -412,8 +184,6 @@ class WashingtonDataset(Dataset):
             #     cv2.imwrite('q/'+str(cat_ind)+'/'+str(i)+'.png',255.*q[:,:,i:i+1].numpy().astype(np.float32))
         for file in fnmatch.filter(sorted(os.listdir(instance_path)), suffix):
             path = os.path.join(instance_path, file)
-            # print(file)#water_bottle_2_4_96_depthcrop.png
-            # print(path)#/temp_disk2/zyt/XJY/dataset/wrgbd/eval-set/pliers/pliers_6/pliers_6_4_96_depthcrop.png
             if self.params.qloss:
                 #RGBD
                 if self.params.data_type == 'rgbd':
@@ -460,7 +230,6 @@ def generate_Q(h,w, class_id, num_class, channel_per_class, cu, times):
         C = num_class * channel_per_class
     one_begin = int(class_id) * channel_per_class
     one_end = (int(class_id) + 1) * channel_per_class
-    # print(one_begin,one_end)
 
     Q = torch.zeros((h, w, C)).long()
     Q[:, :, one_begin:one_end] = torch.tensor([1]).long()
