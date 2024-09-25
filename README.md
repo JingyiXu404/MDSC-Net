@@ -72,7 +72,6 @@ All the training and testing images for classification task used in this paper c
 ```
    export PYTHONPATH=$PYTHONPATH:utils/
    python main.py --batch-size 32 --split-no [split number, from 1 to 10] --qloss ['True' for using discriminative loss, 'False' for not] --gpu 'True' --cu 'True' --phase 'test'
-   
 ```
 
 ## 5. Citation
